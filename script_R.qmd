@@ -1,0 +1,1308 @@
+---
+title: "Estudio a nivel masivo del proteoma compartido por las especies del género Bifidobacterium. Flujo de trabajo en R"
+format: html
+editor: visual
+---
+
+Para acceder al código relativo al flujo de trabajo en Linux consultar el siguiente enlace:
+
+<https://github.com/aidavr/TFM-Aida-Vaquero-Rey>
+
+## [Análisis descriptivo de la base de datos]{.underline}
+
+Se inicia el presente trabajo con una base de datos con 822 observaciones (genomas bacterianos) y 73 variables
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#Se cargan las librerías necesarias 
+
+library (stringr)# manipulación rápida de textos 
+library(dplyr) # manipulación y transformación de datos en data frames
+library (tidyr) # transformación y reorganización de datos
+library (tidyverse) # manipulación, análisis de datos y visualización de datos
+library(readr) #lectura de datos tabuales en distintos formatos
+
+#Se establece directorio de trabajo
+
+setwd("C:/Users/aidav/Desktop/Secuencias_genomas_TFM")
+
+#Se lee el txt que contiene toda la información relativa a los genomas 
+
+base_datos <- read_tsv("BVBRC_genome.txt")
+
+```
+
+Se observa cómo es la base de datos (descomentar para correr el script)
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#head (base_datos) #para observar las 6 primeras filas 
+#str (base_datos) #para observar la estructura de la base de datos
+
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# Se depura la base de datos 
+
+db_depurada <- base_datos %>%
+  separate(`Genome Name`, into = c("V1", "V2","V3","V4","V5"), 
+           sep = " ", extra = "drop") %>% 
+  mutate(species = paste(V1, V2, sep = " ")) %>%
+  mutate(tmp = paste(V3, V4, sep = " ")) %>% 
+  mutate(tmp = ifelse(grepl("subsp",tmp),tmp, "")) %>%
+  mutate(subspecies = paste(species, tmp, " ")) %>% 
+  select(-c(V1, V2,V3,V4,V5,tmp)) 
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#Seleccionar las variables de interés
+
+db_depurada <- db_depurada %>% 
+  select("Genome ID", "species", 
+         "subspecies", 
+         "Checkm Completeness",  
+         "Checkm Contamination", 
+         "Sequencing Platform")
+
+```
+
+Se exploran las variables cualitativas de interés
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+  
+db_depurada %>% distinct(species)# total=18
+db_depurada %>% distinct(`Sequencing Platform`)
+
+# Se observan las subespecies distintas que aparecen en la BBDD 
+# (no todos los genomas están caracterizadas a nivel de subespecie)
+
+db_depurada %>% filter(grepl("subsp", subspecies)) %>% 
+  distinct(subspecies) # total=6
+```
+
+**Visualización de los datos (tablas y figuras)**
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#Librerías para realizar tablas y figuras
+
+library(gt) # para la creación de tablas 
+
+library(ggplot2) # para realizar gráficos
+
+library(gtExtras) # extensión de "gt" para formatear y personalizar tablas
+
+```
+
+**Tabla 1.** Análisis descriptivo de la integridad y contaminación de CheckM, procedentes del repositorio BV-BRC.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+tabla_1 <- db_depurada %>% select ("Checkm Completeness","Checkm Contamination") 
+
+gt_plt_summary(tabla_1)
+```
+
+**Figura 1.** Frecuencia absoluta para cada una de las especies recogidas en la base de datos inicial.
+
+-   *Creación de la tabla asociada a la Figura 1*
+
+```{r message=FALSE, out.width="50%",warning=FALSE, paged.print=FALSE}
+tabla_sup_1 <- as.data.frame(table(db_depurada$species))
+
+gt::gt(tabla_sup_1) %>% 
+  tab_header(title= md("**Tabla Suplementaria 1**"),
+             subtitle = "Frecuencia absoluta por especie") %>% 
+  cols_label(Var1 = "Especie", Freq = "F. absoluta")
+
+```
+
+-   *Modificación de datos para representarlos en la Figura 1*
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+tabla_sup_1 <- tabla_sup_1 %>% 
+  mutate(Var1 = str_replace_all(Var1, "Bifidobacterium", "B.")) %>% 
+  mutate(Var1 = str_replace_all(Var1, "Cutibacterium", "C.")) %>% 
+  mutate(Var1 = str_replace_all(Var1, "Enterococcus", "E."))
+```
+
+-   *Creación de la Figura 1:*
+
+```{r message=FALSE, out.width="70%",fig.align = 'center', warning=FALSE, paged.print=FALSE}
+tabla_sup_1 %>% ggplot(aes(x=Var1, y=Freq)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  geom_text(aes(label = Freq), nudge_y = 12, size = 4) +
+  theme_light() +
+  xlab("") +
+  ylab("Frecuencia absoluta por especie")+
+  theme(axis.title.x = element_text( size = 15),
+        axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 15, face = "italic"))
+```
+
+**Figura 2.** Frecuencia absoluta de las subespecies descritas para B. logum, B. catenulatum y B. animales. También se indica el porcentaje de dichas especies no descritas a nivel de subespecie (Desconocida).
+
+-   *Preparación de los datos para la realización de la Figura 2:*
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+# Primero se obtienen los porcentajes/subespecies 
+
+db_depurada_perc <- db_depurada %>%
+  dplyr::filter(species == "Bifidobacterium animalis" |
+                  species == "Bifidobacterium longum" |
+                  species == "Bifidobacterium catenulatum") %>% 
+  dplyr::mutate(subspecies = ifelse(
+    grepl("subsp", subspecies), subspecies, "Desconocida")) %>%
+  dplyr::group_by(species) %>% 
+  dplyr::mutate(total = n()) %>% 
+  ungroup() %>% 
+  dplyr::group_by(subspecies, species) %>% 
+  dplyr::mutate(total_subspecies = n()) %>% 
+  ungroup() %>% 
+  dplyr::mutate(percent= (total_subspecies/total)*100)
+
+```
+
+-   *Elaboración de la Figura 2*
+
+```{r message=FALSE, out.width="90%",fig.align = 'center',warning=FALSE, paged.print=FALSE}
+
+library(ggsci) # paletas de colores adicionales para gráficos en ggplot2
+
+y_pos <- c(97.5, 80, 34, 93, 42.5, 98, 75, 50, 25)
+
+db_depurada_perc %>%
+  mutate(species = str_replace_all(species, "Bifidobacterium", "B.")) %>%
+  mutate(subspecies = str_replace_all(subspecies, "Bifidobacterium", "B.")) %>% 
+  mutate(subspecies = str_replace_all(subspecies, "subsp.", "")) %>%
+  mutate(subspecies = str_replace_all(subspecies, "  ", " ")) %>%
+  select(species, subspecies, total, total_subspecies, percent) %>% 
+  group_by(species, subspecies) %>% 
+  mutate(percent = round(percent, 2)) %>%
+  distinct(subspecies, .keep_all = TRUE) %>% 
+  arrange(species, subspecies,  percent) %>% 
+  ggplot(aes(x= species, y= percent, color = as.factor(subspecies), 
+             fill= as.factor(subspecies))) +
+  geom_bar(stat= "identity", alpha= .5) +
+  coord_flip() +
+  geom_text(aes(x= species, y= y_pos, 
+                label = paste(percent, "%", sep="")), 
+            color = "black", size = 3) +
+  scale_color_npg() +
+  scale_fill_npg()+
+  theme_light()+
+  guides(fill=guide_legend(title = "Subespecie"), color="none")+
+  ylab("Porcentaje perteneciente a cada subespecie")+
+  xlab("")+
+  theme(axis.title.x = element_text( size = 8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8, face = "italic"),
+        legend.text = element_text (size = 6, face = "italic"),
+        legend.title = element_text (size = 6, face = "bold"))
+```
+
+## [GUNC]{.underline}
+
+#### Obtención de resultados
+
+Este paso se llevó a cabo en linux, con la herramienta GUNC. El código se aporta en el github creado para este Trabajo de Fin de Máster (README.md)
+
+#### Tratamiento previo de los outputs obtenidos
+
+1.  Se importa la base de datos generada como output de GUNC
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+    setwd("D:/RESULTADOS_PRUEBAS_TFM/resultados_fna_GUNC")
+    results <- read.csv("GUNC.progenomes_2.1.maxCSS_level.tsv", sep = "\t")
+```
+
+2.  Se eliminan los controles
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+results <- results %>% 
+  filter (genome != c("Escherichia_coli_str_K12_MG1655","Lacto_324831.13"))
+```
+
+3.  Las bbdd comparten el orden de las observaciones pero no hay ninguna variable compartida en ambas. Por ello, se genera un identificador ("Id") compartido.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+db_depurada <- db_depurada %>%
+  rownames_to_column("Id")
+
+results <- results %>%
+  rownames_to_column("Id")
+```
+
+4.  Se compila la bbdd descriptiva con la bbdd que se genera como output de GUNC
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+db_conjunta <- db_depurada %>% 
+  inner_join(results, by= "Id")
+```
+
+5.  Se eliminan las especies distintas a *Bifidobacterium* y los *Bifidobacterium* con hospedador no humano antes de proceder con el análisis del output de GUNC
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Se obtienen 802 bacterias
+
+db_conjunta <- db_conjunta %>% 
+      filter (grepl("Bifidobacterium", species)) %>% 
+      filter (!grepl("scardovii", species)) %>%      
+      filter (!grepl("gallicum", species)) %>%
+      filter (!grepl("thermophilum", species)) %>% 
+      mutate(species = str_replace_all(
+        species,
+        "Bifidobacterium kashiwanohense",
+        "Bifidobacterium catenulatum")) %>% 
+      mutate(species = str_replace_all(
+        species,"Bifidobacterium stercoris",
+        "Bifidobacterium adolescentis"))
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+# 10 especies diferentes + Bifidobacterium sp.
+
+db_conjunta %>% distinct(species) 
+```
+
+#### Análisis de los resultados de GUNC
+
+-   **Cálculo de los genes codificantes obtenidos de todos los genomas de *Bifidobacterium***
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+mean(db_conjunta$n_genes_called) 
+```
+
+-   **Determinar en qué especies es más común encontrar contaminaciones**
+
+Se escogen sólo aquellas secuencias contaminadas:
+
+```{r message=FALSE, warning=FALSE}
+filter_results_false <- db_conjunta %>% 
+  filter (pass.GUNC == "False")
+```
+
+Frecuencias absolutas y relativas por especies pertenecientes a los genomas contaminados:
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+t_abs <- table(filter_results_false$species)
+
+t_abs <- as.data.frame(t_abs) 
+
+t_rel <- t_abs %>%
+  mutate (Freq_rel = (prop.table(t_abs$Freq)*100)) %>% 
+  mutate(Freq_rel = round(Freq_rel, digits = 2)) %>% 
+  mutate(Freq_rel = paste(Freq_rel, "%", sep=""))
+
+gt::gt(t_rel) %>% 
+  tab_header(title= md(""),subtitle = md (
+"**Frecuencia absoluta de las especies con genoma contaminado**")) %>% 
+  cols_label(Var1 = md("**Especie**"), 
+             Freq = md("**F. absoluta**"), 
+             Freq_rel =md("**F. relativa**"))
+
+```
+
+**Figura 3**. Frecuencia absoluta para cada una de las especies de *Bifidobacterium* correspondientes a los genomas contaminados.
+
+```{r message=FALSE, out.width="70%",fig.align = 'center', warning=FALSE, paged.print=FALSE}
+t_abs %>% 
+  mutate(Var1 = str_replace_all(Var1, "Bifidobacterium", "B.")) %>% 
+  ggplot(aes(x=Var1, y=Freq)) +
+  geom_bar(stat = "identity", width = .6) +
+  coord_flip() +
+  theme_light() +
+  xlab("") +
+  ylab("Frecuencia absoluta por especie") +
+  theme(axis.text.y = element_text(size= 12, face= "italic"),
+        axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 15))
+```
+
+-   **Determinar si existe relación del CSS con el RSS y con T~eff~**
+
+**Tabla 2.** Análisis descriptivo el CSS (Clade Separation Score), del T ~eff~ (Effective number of Surplus Clades) y del RSS (Reference Representation Score) en función de si corresponden a genomas contaminados (False) o no contaminados (True).
+
+```{r message=FALSE, out.width="100%", warning=FALSE, paged.print=FALSE}
+## CSS 
+
+#Se analiza la normalidad 
+
+model1 <- lm(db_conjunta$clade_separation_score ~ db_conjunta$pass.GUNC)
+Shapiro1 <- shapiro.test(model1$residuals)
+Shapiro1[["p.value"]]
+
+# Estadísticos descriptivos
+
+descriptivos1 <- db_conjunta %>%
+  group_by(pass.GUNC) %>%
+  summarize(
+        media = mean(clade_separation_score, na.rm = TRUE),
+        mediana = median(clade_separation_score, na.rm = TRUE),
+        minimo = min(clade_separation_score, na.rm = TRUE),
+        maximo = max(clade_separation_score, na.rm = TRUE),
+        n_total = n(),
+        valores_perdidos = sum(is.na(clade_separation_score)),
+        desviacion_estandar = sd(clade_separation_score, na.rm = TRUE))
+
+print (descriptivos1)
+
+
+## RSS
+
+# Se analiza la normalidad 
+
+model2 <- lm(db_conjunta$reference_representation_score ~ db_conjunta$pass.GUNC)
+Shapiro2 <- shapiro.test(model2$residuals)
+Shapiro2[["p.value"]]
+
+# Estadísticos descriptivos
+
+descriptivos2 <- db_conjunta %>%
+  group_by(pass.GUNC) %>%
+  summarize(
+        media = mean(reference_representation_score, na.rm = TRUE),
+        mediana = median(reference_representation_score, na.rm = TRUE),
+        minimo = min(reference_representation_score, na.rm = TRUE),
+        maximo = max(reference_representation_score, na.rm = TRUE),
+        n_total = n(),
+        valores_perdidos = sum(is.na(reference_representation_score)),
+        desviacion_estandar = sd(reference_representation_score, na.rm = TRUE))
+
+print (descriptivos2)
+
+
+## T eff
+
+# Se analiza la normalidad
+
+model3 <- lm(db_conjunta$n_effective_surplus_clades ~ db_conjunta$pass.GUNC)
+Shapiro3 <- shapiro.test(model3$residuals)
+Shapiro3[["p.value"]]
+
+# Estadísticos descriptivos
+
+descriptivos3 <- db_conjunta %>%
+group_by(pass.GUNC) %>%
+  summarize(
+        media = mean(n_effective_surplus_clades, na.rm = TRUE),
+        mediana = median(n_effective_surplus_clades, na.rm = TRUE),
+        minimo = min(n_effective_surplus_clades, na.rm = TRUE),
+        maximo = max(n_effective_surplus_clades, na.rm = TRUE),
+        n_total = n(),
+        valores_perdidos = sum(is.na(n_effective_surplus_clades)),
+        desviacion_estandar = sd(n_effective_surplus_clades, na.rm = TRUE))
+
+print (descriptivos3)
+
+
+```
+
+**Figura 4**. Representación de la distribución de los datos correspondientes al CSS, el Teff y la RSS en función de si los genomas están contaminados o no (según el filtro establecido en GUNC). Se realizó una prueba estadística de U de Mann-Whitney: a) p-valor = 9.69\*10e-73, b) p-valor = 8.21\*10e-68, c) p-valor = 0.293.
+
+```{r message=FALSE, out.width="50%",fig.align = 'center', warning=FALSE, paged.print=FALSE}
+library(rstatix) # para realizar análisis estadísticos
+library(ggpubr) # para la crear y personalizar gráficos de alta calidad
+
+
+# Figura 4a)
+
+stat1 <- rstatix::wilcox_test(
+  data= db_conjunta, clade_separation_score ~ pass.GUNC)
+stat1 <- stat1 %>% rstatix::add_xy_position(x= "pass.GUNC", dodge = .8 )
+stat1[1,8] <- 1.1
+
+db_conjunta %>% 
+  ggplot(aes(x= pass.GUNC, y= clade_separation_score)) +
+  geom_boxplot(alpha= 0, width= .3) +
+  geom_point(size= 1.3,
+             position = position_jitter(width = .1)) +
+  theme_light() +
+  stat_boxplot(geom= "errorbar", width = 0.2) +
+  stat_pvalue_manual(stat1, label = "p", step.increase = 1, size = 6) +
+  ylab("CSS")+
+  xlab("")+
+  scale_x_discrete(labels= c("Contaminadas", "No contaminadas"))+
+  ggtitle("a)")+
+  theme(axis.text.x = element_text(size = 18),
+        axis.text.y = element_text(size = 15),
+        axis.title.y = element_text(size = 18),
+        title = element_text(size= 20))+
+  ylim (0, 1.25)
+
+
+# Figura 4b)
+
+stat2 <- rstatix::wilcox_test(
+  data= db_conjunta, n_effective_surplus_clades ~ pass.GUNC)
+
+stat2 <- stat2 %>% rstatix::add_xy_position(x= "pass.GUNC", dodge = .8)
+
+db_conjunta %>% 
+  ggplot(aes(x= pass.GUNC, y= n_effective_surplus_clades)) +
+  geom_boxplot(alpha= 0, width= .3) +
+  geom_point(size= 1.3,position = position_jitter(width = .1)) +
+  theme_light() +
+  stat_boxplot(geom= "errorbar", width = 0.2) +
+  stat_pvalue_manual(stat2, label = "p", step.increase = 1, size = 6) +
+  ylab("Teff")+
+  xlab("")+
+  scale_x_discrete(labels= c("Contaminadas", "No contaminadas"))+
+  ggtitle("b)")+
+  theme(axis.text.x = element_text(size = 18),
+        axis.text.y = element_text(size = 15),
+        axis.title.y = element_text(size = 18),
+        title = element_text(size= 20))+
+  ylim (0, 0.15)
+
+
+#Figura 4c)
+
+stat3 <- rstatix::wilcox_test(
+  data= db_conjunta, reference_representation_score ~ pass.GUNC)
+stat3 <- stat3 %>% rstatix::add_xy_position(x= "pass.GUNC", dodge = .8 )
+stat3[1,8] <- 1
+
+db_conjunta %>% 
+  ggplot(aes(x= pass.GUNC, y= reference_representation_score)) +
+  geom_point(size= 1.3,position = position_jitter(width = .1)) +
+  geom_boxplot(alpha= 1, width= .3) +
+  theme_light() +
+  stat_boxplot(geom= "errorbar", width = 0.2) +
+  stat_pvalue_manual(stat3, label = "p", step.increase = 1, size = 6) +
+  ylab("RSS")+
+  xlab("")+
+  scale_x_discrete(labels= c("Contaminadas", "No contaminadas"))+
+  ggtitle("c)")+
+  theme(axis.text.x = element_text(size = 18),
+        axis.text.y = element_text(size = 15),
+        axis.title.y = element_text(size = 18),
+        title = element_text(size= 20))+
+  ylim (0.7, 1.05)
+
+
+```
+
+-   **Determinar si existe correlación entre el CSS y el RSS**
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+corr <- cor.test(
+  x=db_conjunta$clade_separation_score, 
+  y=db_conjunta$reference_representation_score, method = 'spearman')
+
+corr
+```
+
+-   **Determinar si existe correlación entre el CSS y el T~eff~**
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+corr <- cor.test(
+  x=db_conjunta$clade_separation_score, 
+  y=db_conjunta$n_effective_surplus_clades, method = 'spearman')
+
+corr
+```
+
+-   **Determinar si existe sesgo de contaminación en función de la tecnología de secuenciación**
+
+Para visualizar los distintos tipos de secuenciadores y depurarlo posteriormente
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# Descomentar para correr script
+
+#table(db_conjunta$`Sequencing Platform`)
+
+db_conjunta %>% distinct(`Sequencing Platform`)
+```
+
+Depurar para reducir el número de categorías para la variable "Plataforma de secuenciación"
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+db_conjunta <- db_conjunta %>% 
+  mutate(`Sequencing Platform` = ifelse
+         (grepl
+           (",|;|/",`Sequencing Platform`),"Varios", `Sequencing Platform`))%>%
+  mutate(`Sequencing Platform` = ifelse
+         (grepl
+           ("Pac",`Sequencing Platform`),"PacBio", `Sequencing Platform`)) %>%
+  mutate(`Sequencing Platform` = ifelse
+         (grepl
+           ("Ion",`Sequencing Platform`),"Ion Torrent",`Sequencing Platform`)) %>%
+  mutate(`Sequencing Platform` = ifelse
+         (grepl("454", `Sequencing Platform` ), "454", `Sequencing Platform`)) %>%
+  mutate(`Sequencing Platform` = ifelse
+         (grepl
+           ("NextSeq 500",`Sequencing Platform`),
+           "Illumina",`Sequencing Platform`))%>%
+  mutate(`Sequencing Platform` = ifelse
+         (grepl
+           ("Hi",`Sequencing Platform`),
+           "Illumina HiSeq",`Sequencing Platform`)) %>% 
+  mutate(`Sequencing Platform` = ifelse
+         (grepl
+           ("Mi",`Sequencing Platform`),
+           "Illumina MiSeq",`Sequencing Platform`))%>%
+  mutate(`Sequencing Platform`= ifelse
+         (grepl
+           ("Illumina",`Sequencing Platform` ),"Illumina",`Sequencing Platform`))
+
+table(db_conjunta$`Sequencing Platform`)
+```
+
+Eliminar los "NA" de la variable Plataforma de Secuenciación
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+sum(is.na(db_conjunta$`Sequencing Platform`)) 
+
+db_conjunta_sin_na <- db_conjunta %>% 
+  drop_na(`Sequencing Platform`)
+
+
+```
+
+**Tabla 3**. Tabla de contingencia de las distintas plataformas de secuencias en función de la contaminación de los genomas.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+table(db_conjunta_sin_na$`Sequencing Platform`, db_conjunta_sin_na$pass.GUNC)
+```
+
+**CSS en función de la plataforma de secuenciación** (todos los genomas: contaminados y no contaminados)
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+db_conjunta_sin_na <- db_conjunta_sin_na %>% 
+  rename(Platform = `Sequencing Platform`)
+
+# Se analiza la normalidad 
+
+model <- lm(
+  db_conjunta_sin_na$clade_separation_score ~ db_conjunta_sin_na$Platform)
+
+Shapiro <- shapiro.test(model$residuals)
+Shapiro[["p.value"]]
+
+
+# Prueba no paramétrica de Kruskal-Wallis (7 categorías)
+
+kruskal.test(
+  formula= db_conjunta_sin_na$clade_separation_score ~ db_conjunta_sin_na$Platform)
+```
+
+**Figura 5.** Representación de la distribución de los datos de CSS pertenecientes a los genomas contaminados, en función de la plataforma de secuenciación.  Se realizó una prueba estadística de U de Mann-Whitney (p-valor = 0.854).
+
+```{r message=FALSE, out.width="50%",fig.align = 'center', warning=FALSE, paged.print=FALSE}
+df <- db_conjunta_sin_na %>% 
+  filter(pass.GUNC == "False") %>% 
+  mutate(Platform = as.factor(Platform))
+
+
+# Prueba no paramétrica U de Mann-Witney (2 categorías: Illumina y Varios)
+
+stat4 <- rstatix::wilcox_test(data = df, clade_separation_score ~ Platform)
+stat4 <- stat4 %>% rstatix::add_xy_position(x= "Platform", dodge = .8 )
+stat4[1,8] <- 1.05
+
+db_conjunta_sin_na %>% 
+  filter(pass.GUNC == "False") %>% 
+  ggplot(aes(x= Platform, y= clade_separation_score)) +
+  geom_boxplot(alpha= 0, width= .5) +
+  geom_point(size= 1.3,position = position_jitter(width = .1)) +
+  theme_light() +
+  stat_boxplot(geom= "errorbar", width = 0.2) +
+  stat_pvalue_manual(stat4, label = "p", step.increase = 1, size= 4) +
+  ylab("CSS")+
+  xlab("Plataforma de secuenciación")+
+  theme(axis.text.x = element_text(size = 12),
+        axis.title.x = element_text(size = 15),
+        axis.text.y = element_text( size = 12),
+        axis.title.y = element_text(size = 15))+
+  ylim(0.4, 1.1)
+
+```
+
+## [PRODIGAL]{.underline}
+
+#### **Preparación del input**
+
+En primer lugar, se deben eliminar los controles y las muestras contaminadas (según los resultados obtenidos en GUNC) de los archivos FASTA originales con extensión "fna".
+
+Para ello, se establece el directorio donde se encuentran estos archivos:
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+setwd("D:/RESULTADOS_PRUEBAS_TFM/genome_fna_passGUNC")
+```
+
+Se crea una variable con el mismo nombre que los ficheros originales (añadiendo la extensión .fna)
+
+```{r}
+muestras <- results %>% 
+  mutate (muestras = paste(genome, ".fna", sep = ""))
+```
+
+Se filtran controles y muestras contaminadas:
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+controles <- muestras %>% 
+  select (muestras) %>% 
+  filter (muestras == c("Escherichia_coli_str_K12_MG1655.fna","Lacto_324831.13.fna"))
+
+muestras_contaminadas <- muestras %>% 
+  filter (pass.GUNC == "False") %>% 
+  select (muestras)
+```
+
+Se eliminan los archivos originales (descomentar bucles para ejecutarlos):
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+vector_muestras <- as.vector(muestras_contaminadas)
+vector_controles <- as.vector (controles)
+
+#for(i in vector_muestras){file.remove(i)}
+
+#for(i in vector_controles){file.remove(i)}
+```
+
+Se lleva a cabo el mismo proceso con especies que no pertenecen a *Bifidobacterium* y especies de *Bifidobacterium* no hospedadoras del humano (descomentar bucle para ejecutarlo)
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+db_conjunta_fna <- db_conjunta %>% 
+  mutate (genome.fna = paste(genome, ".fna", sep = ""))
+
+filtrado_especies <- db_conjunta_fna %>%
+  select(species, genome.fna)
+
+filtrado_especies %>% distinct(species)
+
+filtrado_especies <- filtrado_especies %>%
+  filter (species =="Enterococcus faecalis"|
+            species =="Cutibacterium avidum"|
+            species =="Bifidobacterium scardovii"|
+            species =="Bifidobacterium gallicum"|
+            species =="Bifidobacterium thermophilum")
+
+filtrado_especies <- as.vector (filtrado_especies$genome.fna)
+
+# Descomentar bucle para ejecutarlo
+
+#for(i in filtrado_especies){file.remove(i)}
+```
+
+#### Obtención de resultados
+
+Este paso se llevó a cabo en linux, con la herramienta PRODIGAL. El código se aporta en el README del github creado para este Trabajo de Fin de Máster.
+
+Los outputs generados en PRODIGAL (archivos con extensión .faa) son el input de CD-HIT.
+
+## [CD-HIT]{.underline}
+
+#### Obtención de resultados
+
+Este paso se llevó a cabo en linux, con la herramienta CD-HIT. El código se aporta en el github creado para este Trabajo de Fin de Máster (README.md)
+
+#### **Tratamiento de datos**
+
+Se realiza un bucle para poder trabajar con el output generado por CD-HIT (archivo con extensión ".clstr" donde se encuentran definidos los clusters). Hay un archivo clstr por cada porcentaje de identidad de secuencia que se probó en CD-HIT (40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90 y 95).
+
+Debido a que el bucle es computacionalmente muy costoso y tarda mucho tiempo, se han almacenado todos los data frames generados para cada una de las identidades en el github creado para este Trabajo de Fin de Máster (Carpeta "Umbrales_CD-HIT"). Se indica cómo se deben importar a continuación.
+
+Para ejecutar el bucle es necesario descomentarlo.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Se establece el directorio de trabajo donde se encuentran los archivos 
+
+setwd("D:/RESULTADOS_DEFINITIVOS_TFM/CD-HIT/output_CD-HIT")
+
+# Se realiza el bucle
+
+identidades <-  c("db_40.clstr", "db_45.clstr", 
+                  "db_50.clstr", "db_55.clstr", 
+                  "db_60.clstr", "db_65.clstr", 
+                  "db_70.clstr", "db_75.clstr", 
+                  "db_80.clstr", "db_85.clstr", 
+                  "db_90.clstr", "db_95.clstr")
+
+#resultados <- list()
+#for (i in identidades) {
+#  df <- read.csv(i, sep="\t", row.names= NULL, header= FALSE, stringsAsFactors = FALSE)
+#  n = nrow(df)
+#  name <- tools::file_path_sans_ext(basename(i)) # Eliminar extensión .clstr
+#  x = 0
+#  print(name)
+#  numbers_only <- function(x) !grepl("\\D", x)
+#  for (row in (1:nrow(df))) {
+#    if (numbers_only(df[row,1]) == TRUE) {
+#      df[row,1] <- x}
+#    else {NULL}
+#    x <- df[row,1]
+#    print(row)
+#  }
+#  df <- df %>%
+#    mutate(V1= str_replace_all(V1, ">", "")) %>% 
+#    drop_na() %>% 
+#    group_by(V1) %>% 
+#    mutate(n_secuencias = n()) %>% 
+#    distinct(V1, .keep_all =TRUE) %>% 
+#    ungroup() %>% 
+#    mutate (n_grupos=row_number())
+#  resultados[[name]] <- df
+#}
+
+#n_clstr40 <- resultados$db_40
+#n_clstr45 <- resultados$db_45
+#n_clstr50 <- resultados$db_50
+#n_clstr55 <- resultados$db_55
+#n_clstr60 <- resultados$db_60
+#n_clstr65 <- resultados$db_65
+#n_clstr70 <- resultados$db_70
+#n_clstr75 <- resultados$db_75
+#n_clstr80 <- resultados$db_80
+#n_clstr85 <- resultados$db_85
+#n_clstr90 <- resultados$db_90
+#n_clstr95 <- resultados$db_95
+
+#Se guardan las tablas generadas
+
+#write.table(n_clstr40, "n_clstr40.txt")
+#write.table(n_clstr45, "n_clstr45.txt")
+#write.table(n_clstr50, "n_clstr50.txt")
+#write.table(n_clstr55, "n_clstr55.txt")
+#write.table(n_clstr60, "n_clstr60.txt")
+#write.table(n_clstr65, "n_clstr65.txt")
+#write.table(n_clstr70, "n_clstr70.txt")
+#write.table(n_clstr75, "n_clstr75.txt")
+#write.table(n_clstr80, "n_clstr80.txt")
+#write.table(n_clstr85, "n_clstr85.txt")
+#write.table(n_clstr90, "n_clstr90.txt")
+#write.table(n_clstr95, "n_clstr95.txt")
+```
+
+Para importar todos los data frames generados de la ejecución del bucle anterior:
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+setwd("D:/RESULTADOS_DEFINITIVOS_TFM/CD-HIT")
+
+n_clstr40 <- read.csv("n_clstr40.txt", sep="")%>% select(-(V2))
+n_clstr45 <- read.csv("n_clstr45.txt", sep="")%>% select(-(V2))
+n_clstr50 <- read.csv("n_clstr50.txt", sep="")%>% select(-(V2))
+n_clstr55 <- read.csv("n_clstr55.txt", sep="")%>% select(-(V2))
+n_clstr60 <- read.csv("n_clstr60.txt", sep="")%>% select(-(V2))
+n_clstr65 <- read.csv("n_clstr65.txt", sep="")%>% select(-(V2))
+n_clstr70 <- read.csv("n_clstr70.txt", sep="")%>% select(-(V2))
+n_clstr75 <- read.csv("n_clstr75.txt", sep="")%>% select(-(V2))
+n_clstr80 <- read.csv("n_clstr80.txt", sep="")%>% select(-(V2))
+n_clstr85 <- read.csv("n_clstr85.txt", sep="")%>% select(-(V2))
+n_clstr90 <- read.csv("n_clstr90.txt", sep="")%>% select(-(V2))
+n_clstr95 <- read.csv("n_clstr95.txt", sep="")%>% select(-(V2))
+```
+
+#### **Visualización de resultados**
+
+**Figura 6.** Representación del número de secuencias (eje y) en función del número de cluster generados por CD-HIT (eje x) para distintos umbrales de identidad de secuencia.
+
+```{r message=FALSE, out.width="50%",fig.align = 'center', warning=FALSE, paged.print=FALSE}
+n_clstr40%>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  ggtitle("a)")+
+  theme(title = element_text(size = 18))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr45 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr50 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  ggtitle("b)")+
+  theme(title = element_text(size = 18))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr55 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr60 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  ggtitle("c)")+
+  theme(title = element_text(size = 18))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+  
+
+n_clstr65 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr70 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  ggtitle("d)")+
+  theme(title = element_text(size = 18))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr75 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr80 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  ggtitle("e)")+
+  theme(title = element_text(size = 18))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr85 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr90 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  ggtitle("f)")+
+  theme(title = element_text(size = 18))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+
+n_clstr95 %>% 
+  ggplot(aes(x=n_grupos, y= n_secuencias))+
+  xlab("Nº de cluster")+
+  ylab("Nº de secuencias")+
+  geom_point()+
+  theme_light()+
+  ylim(0,1500)+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  theme(plot.margin = margin(0.5, 1, 0.5, 0.5, unit = "cm"))
+```
+
+#### **Selección de los clusters que conforman el genoma codificante central**
+
+-   El número 787 hace referencia al número total de secuencias con las que se ha trabajado.
+
+-   Se multiplica por 0.95 para obtener los clusters que contengan un porcentaje de secuencias igual o superior al 95% de secuencias totales. No se escoge el 100% para no descartar la ausencia de genes en ciertos genomas que no estén completos, dando así un porcentaje de error del 5%.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+sub_clstr40<-subset(n_clstr40, n_secuencias >= 787*0.95)
+sub_clstr45<-subset(n_clstr45, n_secuencias >= 787*0.95)
+sub_clstr50<-subset(n_clstr50, n_secuencias >= 787*0.95)
+sub_clstr55<-subset(n_clstr55, n_secuencias >= 787*0.95)
+sub_clstr60<-subset(n_clstr60, n_secuencias >= 787*0.95)
+sub_clstr65<-subset(n_clstr65, n_secuencias >= 787*0.95)
+sub_clstr70<-subset(n_clstr70, n_secuencias >= 787*0.95)
+sub_clstr75<-subset(n_clstr75, n_secuencias >= 787*0.95)
+sub_clstr80<-subset(n_clstr80, n_secuencias >= 787*0.95)
+sub_clstr85<-subset(n_clstr85, n_secuencias >= 787*0.95)
+sub_clstr90<-subset(n_clstr90, n_secuencias >= 787*0.95)
+sub_clstr95<-subset(n_clstr95, n_secuencias >= 787*0.95)
+```
+
+#### **Método de Elbow**
+
+Para seleccionar el umbral de identidad óptimo para el análisis del genoma codificante central
+
+```{r message=FALSE, out.width="50%",fig.align = 'center', warning=FALSE, paged.print=FALSE}
+df<-as.data.frame(matrix(, ncol=3, nrow=12, 
+                         dimnames=list(c(), c("Identity","Core","Clusters"))))
+
+df[,1]<-c(95,90,85,80,75,70,65,60,55,50,45,40)
+
+df[,2]<-c(nrow(sub_clstr95),nrow(sub_clstr90),
+          nrow(sub_clstr85),nrow(sub_clstr80), 
+          nrow(sub_clstr75), nrow(sub_clstr70), 
+          nrow(sub_clstr65), nrow(sub_clstr60), 
+          nrow(sub_clstr55),nrow(sub_clstr50),
+          nrow(sub_clstr45), nrow(sub_clstr40))
+
+df[,3]<-c(nrow(n_clstr95),nrow(n_clstr90),
+          nrow(n_clstr85),nrow(n_clstr80),
+          nrow(n_clstr75),nrow(n_clstr70),
+          nrow(n_clstr65),nrow(n_clstr60),
+          nrow(n_clstr55),nrow(n_clstr50),
+          nrow(n_clstr45), nrow(n_clstr40))
+
+#Figura 7.a.
+
+df %>% 
+  ggplot(aes(x= (0-df$Identity), y= -log2(df$Core)))+
+  xlab("-(Porcentaje de identidad de secuencia)")+
+  ylab("-log2 (Secuencias del genoma core)")+
+  geom_point() +
+  scale_x_continuous(breaks = 0-df$Identity)+
+  geom_point(aes(color = ifelse(
+    (0 - df$Identity) == -85, "PuntoRojo", "Otros"), 
+                 size = ifelse(
+                   (0 - df$Identity) == -85, "PuntoGrande", "Otros")))+
+  scale_color_manual(values = c("PuntoRojo" = "red", "Otros" = "black")) +
+  scale_size_manual(values = c("PuntoGrande" = 6, "Otros" = 4)) +
+  guides(color = FALSE, size = FALSE)+
+  theme_light()+
+  geom_line()+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  ggtitle(" a) Método de Elbow")+
+  theme (plot.title = element_text(size=15, face="bold"))
+```
+
+#### Método de Tasa de Cambio
+
+```{r message=FALSE, out.width="50%",fig.align = 'center', warning=FALSE, paged.print=FALSE}
+tasa_cambio <- diff(df$Core) / diff(df$Identity)
+
+tasa_cambio <- c(tasa_cambio, 0) 
+
+df <- df %>% 
+  mutate(tasa_cambio= tasa_cambio) %>% 
+  mutate (identidad_invertida = (Identity*(-1)))
+
+#Figura 7.b.
+
+df %>% 
+  ggplot(aes(x = identidad_invertida, y = tasa_cambio)) +
+  geom_point() +
+  xlab("-(Porcentaje de identidad de secuencia)") +
+  ylab("Tasa de Cambio") +
+  scale_x_continuous(breaks = df$identidad_invertida)+
+  geom_point(aes(color = ifelse(identidad_invertida == -85, "PuntoRojo", "Otros"), 
+                 size = ifelse(
+                   identidad_invertida == -85, "PuntoGrande", "Otros")))+
+  scale_color_manual(values = c("PuntoRojo" = "red", "Otros" = "black")) +
+  scale_size_manual(values = c("PuntoGrande" = 6, "Otros" = 4)) +
+  guides(color = FALSE, size = FALSE)+
+  theme_light()+
+  theme(axis.title.x= element_text(size=15))+
+  theme(axis.title.y= element_text(size=15))+
+  theme(axis.text = element_text(size = 12))+
+  ggtitle(" b) Tasa de Cambio")+
+  theme (plot.title = element_text(size=15, face="bold"))
+```
+
+Se comprueba de forma matemática:
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+# Calcular la segunda derivada (cambio en la tasa de cambio)
+segunda_derivada <- diff(diff(tasa_cambio)) / diff(df$Identity[-1])
+
+# Imprimir la segunda derivada
+print(segunda_derivada)
+
+# Encontrar el índice del mínimo local en la segunda derivada
+indice_minimo_local <- which.min(segunda_derivada)
+print(indice_minimo_local)
+
+# El punto de inflexión corresponde a la variable Identity 
+punto_inflexion <- c(df$Identity[indice_minimo_local + 1])
+
+# Imprimir el punto de inflexión
+print(punto_inflexion)
+```
+
+#### Extracción de los clusters con el número de secuencias de interés
+
+Este paso se llevó a cabo en linux, con el algoritmo make_multi_seq de CD-HIT. El código se aporta en el github creado para este Trabajo de Fin de Máster (README.md).
+
+## MUSCLE y HMMER3
+
+Posteriormente se realizaron alineamientos múltiples de secuencias, así como generación de secuencias consenso con las herramienttas MUSCLE y HMMER3. Para más información consultar el README del github creado para este Trabajo de Fin de Máster.
+
+## EggNOG
+
+#### Obtención de resultados
+
+Este paso se llevó a cabo en linux, con el servidor-web eggNOG-mapper (consultar cómo debe introducirse el input en el README del github creado para este Trabajo de Fin de Máster).
+
+#### Proteoma expandido
+
+Análisis de los resultados para el umbral de identidad 50%. Se lee el output de anotación de proteínas generado por EggNOG-mapper y se seleccionan las variables de interés.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+setwd ("D:/RESULTADOS_DEFINITIVOS_TFM/eggNOG/Identidad_50")
+
+eggNOG_50 <- read.csv("out.emapper.annotations",
+                 sep = "\t",
+                 comment.char = "#",
+                 header = FALSE,
+                 na.strings = "-")
+
+colnames(eggNOG_50) <- c("query", "seed_ortholog", "evalue", 
+                         "score", "eggNOG_OGs",
+                         "max_annot_lvl", "COG_category", "Description",
+                         "Preferred_name","GOs", "EC", "KEGG_ko", 
+                         "KEGG_Pathway", "KEGG_Module", "KE",
+                         "GG_Reaction", "KEGG_rclass", "BRITE", "CAZy",
+                         "BiGG_Reaction", "PFAMs")
+
+
+select_eggNOG_50 <-eggNOG_50 %>% 
+  select("query", "COG_category", "KEGG_ko", "CAZy")
+
+
+#Se explora la variable COG_caterogy
+table(select_eggNOG_50$COG_category)
+
+COG_50 <- select_eggNOG_50 %>%
+  separate_rows(COG_category, sep="", convert= F) %>% 
+  filter(COG_category != "") %>% 
+  group_by(COG_category) %>% 
+  mutate(n = n()) %>% 
+  distinct(n) %>% 
+  ungroup() %>% 
+  mutate (porcentaje = round(n/sum(n)*100, 2))
+```
+
+Se crea un data frame con la anotación por categoría
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+annotation <- data.frame(COG_category = factor(
+  c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", 
+    "O", "P", "Q", "R", "S", "T", "U", "V", "W", "Y", "Z"), 
+  levels=c("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+           "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "Y", "Z")),
+  labels = c(
+    "A: Procesamiento y modificación del ARN", 
+    "B: Estructura y dinámica de la cromatina",
+    "C: Producción y conversión de energía",
+    "D: Control del ciclo celular, división celular, partición de cromosomas",
+    "E: Transporte y metabolismo de aminoácidos",
+    "F: Transporte y metabolismo de nucleótidos",
+    "G: Transporte y metabolismo de carbohidratos",
+    "H: Transporte y metabolismo de coenzimas",
+    "I: Transporte y metabolismo de lípidos",
+    "J: Traducción, estructura y biogénesis ribosómica",
+    "K: Transcripción", "L: Replicación, recombinación y reparación",
+    "M: Biogénesis de la pared celular/membrana/envolvente",
+    "N: Motilidad celular",
+    "O: Modificación postraduccional, recambio de proteínas, chaperonas",
+    "P: Transporte y metabolismo de iones inorgánicos",
+    "Q: Biosíntesis, transporte y catabolismo de metabolitos secundarios",
+    "R: Predicción de función general únicamente",
+    "S: Función desconocida",
+    "T: Señalización de la actividad celular",
+    "U: Tráfico intracelular, secreción y transporte vesicular",
+    "V: Mecanismos de defensa",
+    "W: Estructuras extracelulares",
+    "Y: Estructura nuclear", 
+    "Z: Citoesqueleto"))
+```
+
+Se unifica con el data frame con el que se está trabajando y se representa gráficamente:
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+#Figura 8 a)
+
+COG_50 %>% inner_join(annotation) %>% 
+  mutate(
+    Leyenda = case_when(
+      COG_category == "C" ~ "Metabolismo",
+      COG_category == "D" ~ "Procesos celulares y señalización",
+      COG_category == "E" ~ "Metabolismo",
+      COG_category == "F" ~ "Metabolismo",
+      COG_category == "G" ~ "Metabolismo",
+      COG_category == "H" ~ "Metabolismo",
+      COG_category == "I" ~ "Metabolismo",
+      COG_category == "J" ~ "Almacenamiento y procesamiento de la información",
+      COG_category == "K" ~ "Almacenamiento y procesamiento de la información",
+      COG_category == "L" ~ "Almacenamiento y procesamiento de la información",
+      COG_category == "M" ~ "Procesos celulares y señalización",
+      COG_category == "O" ~ "Procesos celulares y señalización",
+      COG_category == "P" ~ "Metabolismo",
+      COG_category == "Q" ~ "Metabolismo",
+      COG_category == "S" ~ "Poco caracterizados",
+      COG_category == "T" ~ "Metabolismo",
+      COG_category == "U" ~ "Metabolismo",
+      COG_category == "V" ~ "Metabolismo")) %>%
+  ggplot(aes(x=labels, y= porcentaje, color= Leyenda, fill = Leyenda)) +
+  geom_bar(stat = "identity", alpha= .5, width = 0.5) + 
+  coord_flip() +
+  geom_text(aes(label = porcentaje), nudge_y = 2, size= 3) +
+  facet_grid(rows = vars(Leyenda), 
+             scales = "free_y", switch = "y", space = "free_y") +
+  theme_minimal(base_family = "Roboto Condensed") +
+  theme(plot.margin = margin(0.5, 0.5, 3, 0.5, unit = "cm"),
+        strip.text.y = element_text(angle = 270, face = "bold", size = 6),
+        strip.placement = "outside",
+        axis.title.x = element_text(
+          margin = margin(t = 0.5, b = 0.5, unit = "cm", ), size= 10),
+        axis.title.y = element_blank(),
+        axis.text = element_text(size = 8),
+        panel.grid.major.y = element_blank(),
+        strip.text.y.left = element_blank(),
+        legend.position = c(0,-0.4),
+        legend.text = element_text(size = 8),
+        legend.title = element_blank())+
+  ylab("Porcentaje de familias proteicas")
+```
+
+Se repite el mismo proceso para representar las anotaciones funcionales del umbral de 85% .
+
+#### Proteoma central
+
+Análisis de los resultados para el umbral de 85%
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+setwd ("D:/RESULTADOS_DEFINITIVOS_TFM/eggNOG/Identidad_85")
+
+eggNOG_85 <- read.csv("out.emapper.annotations",
+                 sep = "\t",
+                 comment.char = "#",
+                 header = FALSE,
+                 na.strings = "-")
+
+colnames(eggNOG_85) <- c("query", "seed_ortholog", 
+                         "evalue", "score", "eggNOG_OGs",
+                         "max_annot_lvl", "COG_category", "Description",
+                         "Preferred_name",
+                         "GOs", "EC", "KEGG_ko", "KEGG_Pathway", 
+                         "KEGG_Module", "KE",
+                         "GG_Reaction", "KEGG_rclass", "BRITE", "CAZy",
+                         "BiGG_Reaction", "PFAMs")
+
+
+select_eggNOG_85 <-eggNOG_85 %>% 
+  select("query", "COG_category", "KEGG_ko", "CAZy")
+
+
+#Se explora la variable COG_caterogy
+table(select_eggNOG_85$COG_category)
+
+COG_85 <- select_eggNOG_85 %>%
+  separate_rows(COG_category, sep="", convert= F) %>% 
+  filter(COG_category != "") %>% 
+  group_by(COG_category) %>% 
+  mutate(n = n()) %>% 
+  distinct(n) %>% 
+  ungroup() %>% 
+  mutate (porcentaje = round(n/sum(n)*100, 2))
+
+
+#Figura 8 b)
+
+COG_85 %>% inner_join(annotation) %>% 
+  mutate(Leyenda = case_when(
+    COG_category == "C" ~ "Metabolismo",
+    COG_category == "D" ~ "Procesos celulares y señalización",
+    COG_category == "E" ~ "Metabolismo",
+    COG_category == "F" ~ "Metabolismo",
+    COG_category == "G" ~ "Metabolismo",
+    COG_category == "H" ~ "Metabolismo",
+    COG_category == "I" ~ "Metabolismo",
+    COG_category == "J" ~ "Almacenamiento y procesamiento de la información",
+    COG_category == "K" ~ "Almacenamiento y procesamiento de la información",
+    COG_category == "L" ~ "Almacenamiento y procesamiento de la información",
+    COG_category == "M" ~ "Procesos celulares y señalización",
+    COG_category == "O" ~ "Procesos celulares y señalización",
+    COG_category == "P" ~ "Metabolismo",
+    COG_category == "Q" ~ "Metabolismo",
+    COG_category == "S" ~ "Poco caracterizados",
+    COG_category == "T" ~ "Metabolismo",
+    COG_category == "U" ~ "Metabolismo",
+    COG_category == "V" ~ "Metabolismo")) %>%
+  ggplot(aes(x=labels, y= porcentaje, color= Leyenda, fill = Leyenda)) +
+  geom_bar(stat = "identity", alpha= .5, width = 0.5) + 
+  coord_flip() +
+  geom_text(aes(label = porcentaje), nudge_y = 2, size =3) +
+  facet_grid(rows = vars(Leyenda), 
+             scales = "free_y", switch = "y", space = "free_y") +
+  theme_minimal(base_family = "Roboto Condensed") +
+  theme(plot.margin = margin(0.5, 0.5, 3, 0.5, unit = "cm"),
+        strip.text.y = element_text(angle = 270, face = "bold", size= 6),
+        strip.placement = "outside",
+        axis.title.x = element_text(
+          margin = margin(t = 0.5, b = 0.5, unit = "cm"), size = 10),
+        axis.title.y = element_blank(),
+        axis.text = element_text(size = 8),
+        panel.grid.major.y = element_blank(),
+        strip.text.y.left = element_blank(),
+        legend.position = c(0,-0.4),
+        legend.text = element_text(size = 8),
+        legend.title = element_blank())+
+  ylab("Porcentaje de familias proteicas")
+```
