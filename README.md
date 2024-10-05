@@ -1,9 +1,24 @@
-# ESTUDIO A NIVEL MASIVO DEL PROTEOMA COMPARTIDO POR LAS ESPECIES DEL GÉNERO BIFIDOBACTERIUM
-# FLUJO DE TRABAJO EN LINUX
+# EL ANÁLISIS DEL GENOMA Y DEL PAN-PROTEOMA EN BIFIDOBACTERIAS HUMANAS REVELA FRONTERAS DISCRETAS PARA LA DEMARCACIÓN DE ESPECIES Y LA DIVERGENCIA FUNCIONAL EN FAMILIAS CAZy
+Aida Vaquero-Rey(1,2), Antonio Bahilo-Gómez(2), Alfonso Benítez-Páez(1,2)
 
-## Máster en Bioinformática UEM
-## TFM Aida Vaquero Rey (2022-2023)
+1. Unidad de Investigación en Microbiota, Nutrición y Salud. Instituto de Agroquímica y Tecnología de Alimentos (IATA-CSIC). Paterna-Valencia, España.
+2. Laboratorio de Interacciones Huésped-Microbio en la Salud Metabólica. Centro de Investigación Príncipe Felipe (CIPF). Valencia, España.
 
+Motivación del trabajo:
+Las especies de Bifidobacterium son uno de los habitantes más predominantes del intestino humano en los primeros años de vida, y están estrechamente relacionadas con el metabolismo de los carbohidratos de la dieta derivados del huésped. Las especies de Bifidobacterium están altamente especializadas y adaptadas al nicho ecológico del intestino humano; sin embargo, no se conocen bien las bases moleculares de dicha adaptación. El objetivo general del presente trabajo fue realizar un análisis de todo el genoma de las especies de Bifidobacterium derivadas exclusivamente de humanos, identificar genes codificantes, estudiar familias de proteínas compartidas en todo el género e identificar señales de divergencia funcional asociadas al panproteoma y al metabolismo de los carbohidratos.
+
+Aproximación: 
+Se utilizó un total de 822 genomas recogidos de la base de datos BV-BRC anotados como de origen Bifidobacterium. Se establecieron múltiples pasos para retener genomas de alta calidad descartando errores taxonómicos y reteniendo genomas sin señal de contaminación. Durante toda la evaluación se realizaron evaluaciones basadas en ANI para la demarcación de especies, predicciones de genes codificantes, agrupación de proteínas y alineaciones de secuencias múltiples. La anotación funcional fue asistida utilizando la base de datos de genes ortólogos (COG), y se exploró la divergencia funcional en el panproteoma expandido, particularmente en las familias CAZy.
+
+Resultados: 
+Bifidobacterium longum fue la especie más representada en el conjunto de datos explorado. El control de calidad de la información y la integridad del genoma permitió excluir veinticuatro genomas del estudio, y se reunificaron treinta especies basándose en los discretos valores de ANI intraespecíficos obtenidos. Además, el análisis de calidad identificó quince genomas contaminados, que se eliminaron para los análisis posteriores. Tras la agrupación iterativa de genes codificantes (a nivel de aminoácidos), la modelización matemática sugirió que el 85% de identidad de secuencia era el mejor umbral para explicar la diversidad del proteoma central. Con este umbral, se contabilizaron 101 familias de proteínas para conformar el panproteoma de Bifidobacterium, en el que la traducción, la estructura y la biogénesis ribosómica eran las funciones más representadas. El pan-proteoma ampliado se exploró más a fondo al 50% de identidad de secuencia, aumentando así el pan-proteoma a 463 familias, donde se identificaron siete familias distintas relacionadas con el metabolismo de los carbohidratos (CAZy) presentes en todas las bifidobacterias humanas. A partir del panproteoma ampliado y de las familias CAZy se recuperó una fuerte señal de divergencia funcional de tipo II, información fundamental para comprender el predominio de especie a especie en el intestino humano y la especialización en el metabolismo de los carbohidratos.
+
+Conclusiones:  
+Las evaluaciones actuales de todo el genoma para explorar las funciones y la divergencia genética exigen genomas de alta calidad. La evaluación de la calidad en nuestro pipeline apoya firmemente los resultados obtenidos en relación con la demarcación de especies, la categorización funcional y la divergencia funcional de las especies de Bifidobacterium. Las comparaciones realizadas a nivel de nucleótidos y proteínas permitieron desvelar rasgos asociados a las especies, fundamentales para comprender la ecología y las preferencias de nicho de estos taxones bacterianos. En conjunto, el establecimiento y la caracterización del proteoma central de Bifidobacterium permitirán futuros estudios de divergencia funcional para explicar las adaptaciones entre especies y las ventajas competitivas de nicho en estos simbiontes humanos de relevancia para nuestra salud.
+
+
+
+# METODOLOGÍA - FLUJO DE TRABAJO EN LINUX
 ## GUNC
 
 Es un paquete de Python utilizado para la detección de contaminación y quimerismo en los genomas procarióticos. Conlsutar página de documentación para su instalación (https://grp-bork.embl-community.io/gunc/index.html)
